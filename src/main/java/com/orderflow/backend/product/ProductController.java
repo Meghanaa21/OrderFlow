@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.http.ResponseEntity;
 
 import java.util.List;
 
@@ -54,6 +56,18 @@ public class ProductController {
 
         return productRepository.save(existingProduct);
     }
+    
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException(
+                        "Product not found with id: " + id));
+
+        productRepository.delete(product);
+
+        return ResponseEntity.noContent().build();
+    }
+
 
 
 }
