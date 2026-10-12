@@ -33,11 +33,13 @@ public class ProductController {
         return productRepository.save(product);
     }
     
+    
     @GetMapping("/{id}")
     public Product getProductById(@PathVariable Long id) {
         return productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found with id: " + id));
+                .orElseThrow(() -> new ProductNotFoundException(id));
     }
+
 
     
     @PutMapping("/{id}")
@@ -46,8 +48,7 @@ public class ProductController {
             @RequestBody Product updatedProduct) {
 
         Product existingProduct = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException(
-                        "Product not found with id: " + id));
+                .orElseThrow(() -> new ProductNotFoundException(id));
 
         existingProduct.setName(updatedProduct.getName());
         existingProduct.setDescription(updatedProduct.getDescription());
@@ -60,8 +61,7 @@ public class ProductController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException(
-                        "Product not found with id: " + id));
+                .orElseThrow(() -> new ProductNotFoundException(id));
 
         productRepository.delete(product);
 
