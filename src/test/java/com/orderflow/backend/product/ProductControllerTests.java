@@ -9,11 +9,14 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 @WebMvcTest(ProductController.class)
 class ProductControllerTests {
 
@@ -113,6 +116,116 @@ void createProductWithNegativeStockReturns400() throws Exception {
             }
             """));
 }
+
+
+@Test
+void createProductWithValidDataReturnsCreatedProduct() throws Exception {
+    when(productRepository.save(any(Product.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+    mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .post("/api/products")
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .content("""
+                            {
+                                "name": "Mechanical Keyboard",
+                                "description": "Test keyboard",
+                                "price": 2499.00,
+                                "stockQuantity": 10
+                            }
+                            """)
+    )
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$.name").value("Mechanical Keyboard"))
+    .andExpect(jsonPath("$.description").value("Test keyboard"))
+    .andExpect(jsonPath("$.price").value(2499.00))
+    .andExpect(jsonPath("$.stockQuantity").value(10));
+}
+
+
+@Test
+void getExistingProductReturnsProduct() throws Exception {
+    Product product = new Product();
+    product.setName("Mechanical Keyboard");
+    product.setDescription("Test keyboard");
+    product.setPrice(new java.math.BigDecimal("2499.00"));
+    product.setStockQuantity(10);
+
+    when(productRepository.findById(1L))
+            .thenReturn(Optional.of(product));
+
+    mockMvc.perform(get("/api/products/1"))
+            .andExpect(status().isOk())
+            .andExpect(content().json("""
+                    {
+                        "name": "Mechanical Keyboard",
+                        "description": "Test keyboard",
+                        "price": 2499.00,
+                        "stockQuantity": 10
+                    }
+                    """));
+}
+
+
+@Test
+void updateExistingProductReturnsUpdatedProduct() throws Exception {
+    Product existingProduct = new Product();
+    existingProduct.setName("Old Keyboard");
+    existingProduct.setDescription("Old description");
+    existingProduct.setPrice(new java.math.BigDecimal("1999.00"));
+    existingProduct.setStockQuantity(5);
+
+    when(productRepository.findById(1L))
+            .thenReturn(Optional.of(existingProduct));
+
+    when(productRepository.save(any(Product.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+
+    mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .put("/api/products/1")
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .content("""
+                            {
+                                "name": "Mechanical Keyboard",
+                                "description": "Updated description",
+                                "price": 2499.00,
+                                "stockQuantity": 10
+                            }
+                            """)
+    )
+    .andExpect(status().isOk())
+    .andExpect(content().json("""
+            {
+                "name": "Mechanical Keyboard",
+                "description": "Updated description",
+                "price": 2499.00,
+                "stockQuantity": 10
+            }
+            """));
+}
+
+@Test
+void deleteExistingProductReturns204() throws Exception {
+    Product product = new Product();
+    product.setName("Mechanical Keyboard");
+    product.setDescription("Test keyboard");
+    product.setPrice(new java.math.BigDecimal("2499.00"));
+    product.setStockQuantity(10);
+
+    when(productRepository.findById(1L))
+            .thenReturn(Optional.of(product));
+
+    mockMvc.perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .delete("/api/products/1")
+    )
+    .andExpect(status().isNoContent());
+
+    verify(productRepository).delete(product);
+}
+
 
 
 }
