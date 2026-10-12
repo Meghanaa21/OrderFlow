@@ -1,11 +1,14 @@
 
 package com.orderflow.backend.order;
 
+import com.orderflow.backend.order.dto.CreateOrderRequest;
+import com.orderflow.backend.order.dto.CreateOrderRequest.OrderItemRequest;
+import com.orderflow.backend.order.dto.OrderResponse;
+import com.orderflow.backend.order.dto.OrderResponse.OrderItemResponse;
 import com.orderflow.backend.product.Product;
 import com.orderflow.backend.product.ProductNotFoundException;
 import com.orderflow.backend.product.ProductRepository;
-import com.orderflow.backend.order.dto.CreateOrderRequest;
-import com.orderflow.backend.order.dto.CreateOrderRequest.OrderItemRequest;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,8 +17,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.orderflow.backend.order.dto.OrderResponse;
-import com.orderflow.backend.order.dto.OrderResponse.OrderItemResponse;
 @Service
 public class OrderService {
 
@@ -34,25 +35,32 @@ public class OrderService {
 
     @Transactional
     public OrderResponse createOrder(CreateOrderRequest request) {
+
         List<OrderItem> orderItems = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         // Validate every item before changing stock.
         for (OrderItemRequest itemRequest : request.getItems()) {
+
             Product product = productRepository.findById(
                     itemRequest.getProductId()
             ).orElseThrow(() ->
-                    new ProductNotFoundException(itemRequest.getProductId())
+                    new ProductNotFoundException(
+                            itemRequest.getProductId()
+                    )
             );
 
             if (product.getStockQuantity() < itemRequest.getQuantity()) {
                 throw new IllegalArgumentException(
-                        "Insufficient stock for product: " + product.getName()
+                        "Insufficient stock for product: "
+                                + product.getName()
                 );
             }
 
             BigDecimal itemTotal = product.getPrice()
-                    .multiply(BigDecimal.valueOf(itemRequest.getQuantity()));
+                    .multiply(
+                            BigDecimal.valueOf(itemRequest.getQuantity())
+                    );
 
             totalAmount = totalAmount.add(itemTotal);
 
@@ -64,6 +72,7 @@ public class OrderService {
             orderItems.add(item);
         }
 
+        // Create the order.
         Order order = new Order();
         order.setStatus("PENDING");
         order.setTotalAmount(totalAmount);
@@ -71,8 +80,9 @@ public class OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
-        for (int i = 0; i < orderItems.size(); i++) {
-            OrderItem item = orderItems.get(i);
+        // Reduce stock and associate each item with the order.
+        for (OrderItem item : orderItems) {
+
             item.setOrder(savedOrder);
 
             Product product = item.getProduct();
@@ -87,8 +97,23 @@ public class OrderService {
 
         return toResponse(savedOrder, orderItems);
     }
-    
-    private OrderResponse toResponse(Order order, List<OrderItem> items) {
+
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderById(Long id) {
+
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+
+        List<OrderItem> items =
+                orderItemRepository.findAllByOrderId(id);
+
+        return toResponse(order, items);
+    }
+
+    private OrderResponse toResponse(
+            Order order,
+            List<OrderItem> items) {
+
         List<OrderItemResponse> itemResponses = items.stream()
                 .map(item -> new OrderItemResponse(
                         item.getProduct().getId(),
@@ -109,5 +134,4 @@ public class OrderService {
                 itemResponses
         );
     }
-
 }

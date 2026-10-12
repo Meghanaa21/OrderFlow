@@ -12,8 +12,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -51,8 +53,7 @@ class OrderServiceTests {
         when(orderRepository.save(any(Order.class)))
                 .thenAnswer(invocation -> {
                     Order order = invocation.getArgument(0);
-                    org.springframework.test.util.ReflectionTestUtils
-                            .setField(order, "id", 1L);
+                    ReflectionTestUtils.setField(order, "id", 1L);
                     return order;
                 });
 
@@ -135,5 +136,42 @@ class OrderServiceTests {
 
         verify(orderRepository, never()).save(any(Order.class));
         verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    void getOrderByIdReturnsOrderResponse() {
+        Order order = new Order();
+        order.setStatus("PENDING");
+        order.setTotalAmount(new BigDecimal("20.00"));
+        order.setCreatedAt(LocalDateTime.now());
+
+        ReflectionTestUtils.setField(order, "id", 1L);
+
+        when(orderRepository.findById(1L))
+                .thenReturn(Optional.of(order));
+
+        when(orderItemRepository.findAllByOrderId(1L))
+                .thenReturn(List.of());
+
+        OrderResponse result = orderService.getOrderById(1L);
+
+        assertEquals("PENDING", result.getStatus());
+        assertEquals(
+                0,
+                new BigDecimal("20.00").compareTo(result.getTotalAmount())
+        );
+
+        verify(orderItemRepository).findAllByOrderId(1L);
+    }
+
+    @Test
+    void getOrderByIdThrowsExceptionWhenOrderDoesNotExist() {
+        when(orderRepository.findById(99L))
+                .thenReturn(Optional.empty());
+
+        assertThrows(
+                OrderNotFoundException.class,
+                () -> orderService.getOrderById(99L)
+        );
     }
 }

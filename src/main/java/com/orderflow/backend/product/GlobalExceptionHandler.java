@@ -3,9 +3,12 @@ package com.orderflow.backend.product;
 
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import com.orderflow.backend.order.OrderNotFoundException;
 
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -40,4 +43,13 @@ public class GlobalExceptionHandler {
                 "details", details
         );
     }
+    
+        @ExceptionHandler(OrderNotFoundException.class)
+        public ResponseEntity<Map<String, String>> handleOrderNotFound(
+                OrderNotFoundException exception) {
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", exception.getMessage()));
+        }
+
 }

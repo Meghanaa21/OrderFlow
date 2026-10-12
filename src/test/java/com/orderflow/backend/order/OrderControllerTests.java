@@ -1,6 +1,6 @@
 
 package com.orderflow.backend.order;
-
+import com.orderflow.backend.order.OrderNotFoundException;
 import com.orderflow.backend.order.dto.CreateOrderRequest;
 import com.orderflow.backend.order.dto.OrderResponse;
 import org.junit.jupiter.api.Test;
@@ -18,6 +18,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.mockito.Mockito.verify;
 
 @WebMvcTest(OrderController.class)
 class OrderControllerTests {
@@ -56,5 +58,37 @@ class OrderControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"items\":[]}"))
                 .andExpect(status().isBadRequest());
+    }
+    
+    @Test
+    void getOrderByIdReturnsOrderResponse() throws Exception {
+        OrderResponse response = new OrderResponse(
+                1L,
+                "PENDING",
+                new BigDecimal("20.00"),
+                LocalDateTime.now(),
+                List.of()
+        );
+
+        when(orderService.getOrderById(1L))
+                .thenReturn(response);
+
+        mockMvc.perform(get("/api/orders/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.totalAmount").value(20.00));
+
+        verify(orderService).getOrderById(1L);
+    }
+    @Test
+    void getOrderByIdReturnsNotFoundWhenOrderDoesNotExist() throws Exception {
+        when(orderService.getOrderById(99L))
+                .thenThrow(new OrderNotFoundException(99L));
+
+        mockMvc.perform(get("/api/orders/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error")
+                        .value("Order not found with id: 99"));
     }
 }
