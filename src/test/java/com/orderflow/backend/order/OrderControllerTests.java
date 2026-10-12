@@ -1,8 +1,9 @@
 
 package com.orderflow.backend.order;
-import com.orderflow.backend.order.OrderNotFoundException;
+
 import com.orderflow.backend.order.dto.CreateOrderRequest;
 import com.orderflow.backend.order.dto.OrderResponse;
+import com.orderflow.backend.order.OrderNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -16,10 +17,10 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(OrderController.class)
 class OrderControllerTests {
@@ -59,15 +60,24 @@ class OrderControllerTests {
                         .content("{\"items\":[]}"))
                 .andExpect(status().isBadRequest());
     }
-    
+
     @Test
     void getOrderByIdReturnsOrderResponse() throws Exception {
+        OrderResponse.OrderItemResponse item =
+                new OrderResponse.OrderItemResponse(
+                        10L,
+                        "Wireless Mouse",
+                        2,
+                        new BigDecimal("10.00"),
+                        new BigDecimal("20.00")
+                );
+
         OrderResponse response = new OrderResponse(
                 1L,
                 "PENDING",
                 new BigDecimal("20.00"),
                 LocalDateTime.now(),
-                List.of()
+                List.of(item)
         );
 
         when(orderService.getOrderById(1L))
@@ -77,10 +87,17 @@ class OrderControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.totalAmount").value(20.00));
+                .andExpect(jsonPath("$.totalAmount").value(20.00))
+                .andExpect(jsonPath("$.items[0].productId").value(10))
+                .andExpect(jsonPath("$.items[0].productName")
+                        .value("Wireless Mouse"))
+                .andExpect(jsonPath("$.items[0].quantity").value(2))
+                .andExpect(jsonPath("$.items[0].unitPrice").value(10.00))
+                .andExpect(jsonPath("$.items[0].subtotal").value(20.00));
 
         verify(orderService).getOrderById(1L);
     }
+
     @Test
     void getOrderByIdReturnsNotFoundWhenOrderDoesNotExist() throws Exception {
         when(orderService.getOrderById(99L))
