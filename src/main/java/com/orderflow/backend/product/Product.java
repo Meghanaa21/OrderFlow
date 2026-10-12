@@ -11,7 +11,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
-
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 
 @Entity
@@ -75,4 +75,6 @@ public class Product {
     public void setStockQuantity(Integer stockQuantity) {
         this.stockQuantity = stockQuantity;
     }
+    @Version
+    private Long version;
 }

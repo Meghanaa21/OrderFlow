@@ -1,0 +1,60 @@
+
+package com.orderflow.backend.order;
+
+import com.orderflow.backend.order.dto.CreateOrderRequest;
+import com.orderflow.backend.order.dto.OrderResponse;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@WebMvcTest(OrderController.class)
+class OrderControllerTests {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private OrderService orderService;
+
+    @Test
+    void createOrderReturnsCreatedResponse() throws Exception {
+        OrderResponse response = new OrderResponse(
+                1L,
+                "PENDING",
+                new BigDecimal("20.00"),
+                LocalDateTime.now(),
+                List.of()
+        );
+
+        when(orderService.createOrder(any(CreateOrderRequest.class)))
+                .thenReturn(response);
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[{\"productId\":1,\"quantity\":2}]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.totalAmount").value(20.00));
+    }
+
+    @Test
+    void createOrderRejectsEmptyItems() throws Exception {
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+}
