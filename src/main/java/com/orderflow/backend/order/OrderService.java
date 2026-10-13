@@ -74,7 +74,7 @@ public class OrderService {
 
         // Create the order.
         Order order = new Order();
-        order.setStatus("PENDING");
+        order.setStatus(Order.STATUS_PENDING);
         order.setTotalAmount(totalAmount);
         order.setCreatedAt(LocalDateTime.now());
 
@@ -108,6 +108,41 @@ public class OrderService {
                 orderItemRepository.findAllByOrderId(id);
 
         return toResponse(order, items);
+    }
+
+    @Transactional
+    public OrderResponse cancelOrder(Long id) {
+
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+
+        // Only pending orders can be cancelled.
+        if (!Order.STATUS_PENDING.equals(order.getStatus())) {
+            throw new OrderCannotBeCancelledException(
+                    id,
+                    order.getStatus()
+            );
+        }
+
+        List<OrderItem> items =
+                orderItemRepository.findAllByOrderId(id);
+
+        // Restore stock for every item in the order.
+        for (OrderItem item : items) {
+            Product product = item.getProduct();
+
+            product.setStockQuantity(
+                    product.getStockQuantity() + item.getQuantity()
+            );
+
+            productRepository.save(product);
+        }
+
+        // Mark the order as cancelled.
+        order.setStatus(Order.STATUS_CANCELLED);
+        Order savedOrder = orderRepository.save(order);
+
+        return toResponse(savedOrder, items);
     }
 
     private OrderResponse toResponse(

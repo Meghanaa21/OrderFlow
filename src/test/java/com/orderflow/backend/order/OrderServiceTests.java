@@ -72,7 +72,7 @@ class OrderServiceTests {
 
         assertEquals(1L, result.getId());
         assertEquals(new BigDecimal("2000.00"), result.getTotalAmount());
-        assertEquals("PENDING", result.getStatus());
+        assertEquals(Order.STATUS_PENDING, result.getStatus());
         assertEquals(8, product.getStockQuantity());
 
         assertEquals(1, result.getItems().size());
@@ -141,7 +141,7 @@ class OrderServiceTests {
     @Test
     void getOrderByIdReturnsOrderResponse() {
         Order order = new Order();
-        order.setStatus("PENDING");
+        order.setStatus(Order.STATUS_PENDING);
         order.setTotalAmount(new BigDecimal("20.00"));
         order.setCreatedAt(LocalDateTime.now());
 
@@ -155,7 +155,7 @@ class OrderServiceTests {
 
         OrderResponse result = orderService.getOrderById(1L);
 
-        assertEquals("PENDING", result.getStatus());
+        assertEquals(Order.STATUS_PENDING, result.getStatus());
         assertEquals(
                 0,
                 new BigDecimal("20.00").compareTo(result.getTotalAmount())
@@ -173,5 +173,74 @@ class OrderServiceTests {
                 OrderNotFoundException.class,
                 () -> orderService.getOrderById(99L)
         );
+    }
+
+    @Test
+    void cancelOrderRestoresStockAndUpdatesStatus() {
+        Order order = new Order();
+        order.setStatus(Order.STATUS_PENDING);
+        order.setTotalAmount(new BigDecimal("2000.00"));
+        order.setCreatedAt(LocalDateTime.now());
+        ReflectionTestUtils.setField(order, "id", 1L);
+
+        Product product = new Product();
+        product.setName("Keyboard");
+        product.setPrice(new BigDecimal("1000.00"));
+        product.setStockQuantity(8);
+        ReflectionTestUtils.setField(product, "id", 10L);
+
+        OrderItem item = new OrderItem();
+        item.setOrder(order);
+        item.setProduct(product);
+        item.setQuantity(2);
+        item.setUnitPrice(new BigDecimal("1000.00"));
+
+        when(orderRepository.findById(1L))
+                .thenReturn(Optional.of(order));
+        when(orderItemRepository.findAllByOrderId(1L))
+                .thenReturn(List.of(item));
+        when(orderRepository.save(any(Order.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderResponse result = orderService.cancelOrder(1L);
+
+        assertEquals(Order.STATUS_CANCELLED, result.getStatus());
+        assertEquals(10, product.getStockQuantity());
+
+        verify(productRepository).save(product);
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    void cancelOrderRejectsAlreadyCancelledOrder() {
+        Order order = new Order();
+        order.setStatus(Order.STATUS_CANCELLED);
+        ReflectionTestUtils.setField(order, "id", 1L);
+
+        when(orderRepository.findById(1L))
+                .thenReturn(Optional.of(order));
+
+        assertThrows(
+                OrderCannotBeCancelledException.class,
+                () -> orderService.cancelOrder(1L)
+        );
+
+        verify(orderItemRepository, never()).findAllByOrderId(anyLong());
+        verify(productRepository, never()).save(any(Product.class));
+        verify(orderRepository, never()).save(any(Order.class));
+    }
+
+    @Test
+    void cancelOrderThrowsExceptionWhenOrderDoesNotExist() {
+        when(orderRepository.findById(99L))
+                .thenReturn(Optional.empty());
+
+        assertThrows(
+                OrderNotFoundException.class,
+                () -> orderService.cancelOrder(99L)
+        );
+
+        verify(orderItemRepository, never()).findAllByOrderId(anyLong());
+        verify(productRepository, never()).save(any(Product.class));
     }
 }

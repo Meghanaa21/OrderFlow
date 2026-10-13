@@ -7,7 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-
+import com.orderflow.backend.order.OrderCannotBeCancelledException;
 import com.orderflow.backend.order.OrderNotFoundException;
 
 import java.util.Map;
@@ -51,5 +51,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(Map.of("error", exception.getMessage()));
         }
+        @ExceptionHandler(OrderCannotBeCancelledException.class)
+        public ResponseEntity<Map<String, String>> handleOrderCannotBeCancelled(
+                OrderCannotBeCancelledException exception) {
 
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", exception.getMessage()));
+        }
 }

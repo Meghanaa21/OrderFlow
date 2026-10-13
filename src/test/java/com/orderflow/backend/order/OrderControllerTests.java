@@ -3,7 +3,6 @@ package com.orderflow.backend.order;
 
 import com.orderflow.backend.order.dto.CreateOrderRequest;
 import com.orderflow.backend.order.dto.OrderResponse;
-import com.orderflow.backend.order.OrderNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -20,6 +19,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(OrderController.class)
@@ -107,5 +107,52 @@ class OrderControllerTests {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error")
                         .value("Order not found with id: 99"));
+    }
+
+    @Test
+    void cancelOrderReturnsCancelledResponse() throws Exception {
+        OrderResponse response = new OrderResponse(
+                1L,
+                "CANCELLED",
+                new BigDecimal("20.00"),
+                LocalDateTime.now(),
+                List.of()
+        );
+
+        when(orderService.cancelOrder(1L))
+                .thenReturn(response);
+
+        mockMvc.perform(delete("/api/orders/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.totalAmount").value(20.00));
+
+        verify(orderService).cancelOrder(1L);
+    }
+
+    @Test
+    void cancelOrderReturnsNotFoundWhenOrderDoesNotExist()
+            throws Exception {
+        when(orderService.cancelOrder(99L))
+                .thenThrow(new OrderNotFoundException(99L));
+
+        mockMvc.perform(delete("/api/orders/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error")
+                        .value("Order not found with id: 99"));
+    }
+
+    @Test
+    void cancelOrderReturnsBadRequestWhenOrderCannotBeCancelled()
+            throws Exception {
+        when(orderService.cancelOrder(1L))
+                .thenThrow(new OrderCannotBeCancelledException(
+                        1L, "CANCELLED"));
+
+        mockMvc.perform(delete("/api/orders/1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error")
+                        .value("Order 1 cannot be cancelled because its status is CANCELLED"));
     }
 }
