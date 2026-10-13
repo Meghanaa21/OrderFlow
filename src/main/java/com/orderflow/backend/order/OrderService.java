@@ -145,6 +145,40 @@ public class OrderService {
         return toResponse(savedOrder, items);
     }
 
+    @Transactional
+    public OrderResponse updateOrderStatus(Long id, String newStatus) {
+
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+
+        String currentStatus = order.getStatus();
+
+        // Allow only the next valid status transition.
+        boolean validTransition =
+                (Order.STATUS_PENDING.equals(currentStatus)
+                        && Order.STATUS_CONFIRMED.equals(newStatus))
+                || (Order.STATUS_CONFIRMED.equals(currentStatus)
+                        && Order.STATUS_SHIPPED.equals(newStatus))
+                || (Order.STATUS_SHIPPED.equals(currentStatus)
+                        && Order.STATUS_DELIVERED.equals(newStatus));
+
+        if (!validTransition) {
+            throw new InvalidOrderStatusTransitionException(
+                    id,
+                    currentStatus,
+                    newStatus
+            );
+        }
+
+        order.setStatus(newStatus);
+        Order savedOrder = orderRepository.save(order);
+
+        List<OrderItem> items =
+                orderItemRepository.findAllByOrderId(id);
+
+        return toResponse(savedOrder, items);
+    }
+
     private OrderResponse toResponse(
             Order order,
             List<OrderItem> items) {

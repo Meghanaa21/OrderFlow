@@ -3,7 +3,10 @@ package com.orderflow.backend.order;
 
 import com.orderflow.backend.order.dto.CreateOrderRequest;
 import com.orderflow.backend.order.dto.OrderResponse;
+import com.orderflow.backend.order.dto.UpdateOrderStatusRequest;
+
 import jakarta.validation.Valid;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,5 +35,12 @@ public class OrderController {
     @DeleteMapping("/{id}")
     public OrderResponse cancelOrder(@PathVariable Long id) {
         return orderService.cancelOrder(id);
+    }
+
+    @PatchMapping("/{id}/status")
+    public OrderResponse updateOrderStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateOrderStatusRequest request) {
+        return orderService.updateOrderStatus(id, request.status());
     }
 }

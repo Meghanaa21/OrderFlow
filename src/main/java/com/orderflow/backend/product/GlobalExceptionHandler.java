@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.orderflow.backend.order.OrderCannotBeCancelledException;
 import com.orderflow.backend.order.OrderNotFoundException;
+import com.orderflow.backend.order.InvalidOrderStatusTransitionException;
 
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -57,5 +58,12 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("error", exception.getMessage()));
+        }
+
+        @ExceptionHandler(InvalidOrderStatusTransitionException.class)
+        public ResponseEntity<Map<String, String>> handleInvalidOrderStatusTransition(
+                        InvalidOrderStatusTransitionException exception) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of("error", exception.getMessage()));
         }
 }

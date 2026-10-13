@@ -10,6 +10,9 @@ import java.time.LocalDateTime;
 public class Order {
 
     public static final String STATUS_PENDING = "PENDING";
+    public static final String STATUS_CONFIRMED = "CONFIRMED";
+    public static final String STATUS_SHIPPED = "SHIPPED";
+    public static final String STATUS_DELIVERED = "DELIVERED";
     public static final String STATUS_CANCELLED = "CANCELLED";
 
     @Id

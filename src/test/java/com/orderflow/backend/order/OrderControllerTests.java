@@ -3,6 +3,8 @@ package com.orderflow.backend.order;
 
 import com.orderflow.backend.order.dto.CreateOrderRequest;
 import com.orderflow.backend.order.dto.OrderResponse;
+import com.orderflow.backend.order.dto.UpdateOrderStatusRequest;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(OrderController.class)
@@ -99,7 +102,8 @@ class OrderControllerTests {
     }
 
     @Test
-    void getOrderByIdReturnsNotFoundWhenOrderDoesNotExist() throws Exception {
+    void getOrderByIdReturnsNotFoundWhenOrderDoesNotExist()
+            throws Exception {
         when(orderService.getOrderById(99L))
                 .thenThrow(new OrderNotFoundException(99L));
 
@@ -154,5 +158,68 @@ class OrderControllerTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error")
                         .value("Order 1 cannot be cancelled because its status is CANCELLED"));
+    }
+
+    @Test
+    void updateOrderStatusReturnsUpdatedOrder() throws Exception {
+        OrderResponse response = new OrderResponse(
+                1L,
+                "CONFIRMED",
+                new BigDecimal("20.00"),
+                LocalDateTime.now(),
+                List.of()
+        );
+
+        when(orderService.updateOrderStatus(
+                1L, "CONFIRMED")).thenReturn(response);
+
+        mockMvc.perform(patch("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CONFIRMED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+
+        verify(orderService).updateOrderStatus(
+                1L, "CONFIRMED");
+    }
+
+    @Test
+    void updateOrderStatusReturnsBadRequestForInvalidTransition()
+            throws Exception {
+        when(orderService.updateOrderStatus(
+                1L, "SHIPPED"))
+                .thenThrow(new InvalidOrderStatusTransitionException(
+                        1L, "PENDING", "SHIPPED"));
+
+        mockMvc.perform(patch("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"SHIPPED\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error")
+                        .value("Cannot change order 1 from PENDING to SHIPPED"));
+    }
+
+    @Test
+    void updateOrderStatusReturnsNotFoundForMissingOrder()
+            throws Exception {
+        when(orderService.updateOrderStatus(
+                99L, "CONFIRMED"))
+                .thenThrow(new OrderNotFoundException(99L));
+
+        mockMvc.perform(patch("/api/orders/99/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CONFIRMED\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error")
+                        .value("Order not found with id: 99"));
+    }
+
+    @Test
+    void updateOrderStatusRejectsBlankStatus() throws Exception {
+        mockMvc.perform(patch("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\" \"}"))
+                .andExpect(status().isBadRequest());
     }
 }
