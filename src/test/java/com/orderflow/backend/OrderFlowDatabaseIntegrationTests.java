@@ -94,6 +94,55 @@ class OrderFlowDatabaseIntegrationTests {
 
         assertThat(tableCount).isEqualTo(3);
     }
+    
+    @Test
+    void failedOrderItemInsertRollsBackOrderAndStockChanges() {
+        Product product = productRepository.saveAndFlush(
+                createProduct("Rollback Product", "10.00", 10)
+        );
+
+        // Force an order-item insert failure inside createOrder().
+        jdbcTemplate.execute("""
+                CREATE OR REPLACE FUNCTION reject_test_order_item()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    RAISE EXCEPTION 'intentional integration test failure';
+                END;
+                $$ LANGUAGE plpgsql
+                """);
+
+        jdbcTemplate.execute("""
+                CREATE TRIGGER reject_test_order_item_trigger
+                BEFORE INSERT ON order_items
+                FOR EACH ROW
+                EXECUTE FUNCTION reject_test_order_item()
+                """);
+
+        try {
+            assertThatThrownBy(() ->
+                    orderService.createOrder(
+                            createOrderRequest(product.getId(), 2)
+                    )
+            ).isInstanceOf(RuntimeException.class);
+        } finally {
+            jdbcTemplate.execute(
+                    "DROP TRIGGER IF EXISTS reject_test_order_item_trigger ON order_items"
+            );
+            jdbcTemplate.execute(
+                    "DROP FUNCTION IF EXISTS reject_test_order_item()"
+            );
+        }
+
+        // Verify that the order and stock updates were rolled back.
+        Product reloadedProduct = productRepository
+                .findById(product.getId())
+                .orElseThrow();
+
+        assertThat(reloadedProduct.getStockQuantity()).isEqualTo(10);
+        assertThat(orderRepository.count()).isZero();
+        assertThat(orderItemRepository.count()).isZero();
+    }
+
 
     @Test
     void productCanBeSavedAndRetrievedFromPostgres() {
