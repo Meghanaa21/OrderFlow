@@ -1,6 +1,8 @@
 
 package com.orderflow.backend;
 
+import com.orderflow.backend.user.User;
+import com.orderflow.backend.user.UserRepository;
 import com.orderflow.backend.order.Order;
 import com.orderflow.backend.order.OrderItem;
 import com.orderflow.backend.order.OrderItemRepository;
@@ -60,6 +62,9 @@ class OrderFlowDatabaseIntegrationTests {
 
     @Autowired
     OrderService orderService;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @DynamicPropertySource
     static void configureDatabase(DynamicPropertyRegistry registry) {
@@ -293,5 +298,35 @@ class OrderFlowDatabaseIntegrationTests {
         CreateOrderRequest request = new CreateOrderRequest();
         request.setItems(List.of(item));
         return request;
+    }
+    @Test
+void userCanBeSavedAndRetrievedFromPostgres() {
+    User user = new User(
+        "Test Customer",
+        "customer@example.com",
+        "test-password-hash"
+    );
+
+    User savedUser = userRepository.saveAndFlush(user);
+
+    assertThat(savedUser.getId()).isNotNull();
+    assertThat(userRepository.findByEmail("customer@example.com"))
+        .isPresent()
+        .get()
+        .extracting(User::getName)
+        .isEqualTo("Test Customer");
+}
+
+    @Test
+    void duplicateUserEmailIsRejectedByPostgres() {
+        userRepository.saveAndFlush(
+            new User("Customer One", "duplicate@example.com", "hash-one")
+        );
+
+        assertThatThrownBy(() ->
+            userRepository.saveAndFlush(
+                new User("Customer Two", "duplicate@example.com", "hash-two")
+            )
+        ).isInstanceOf(RuntimeException.class);
     }
 }

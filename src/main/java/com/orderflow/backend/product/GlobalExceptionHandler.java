@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.orderflow.backend.order.OrderCannotBeCancelledException;
 import com.orderflow.backend.order.OrderNotFoundException;
 import com.orderflow.backend.order.InvalidOrderStatusTransitionException;
-
+import com.orderflow.backend.user.EmailAlreadyRegisteredException;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -65,5 +65,12 @@ public class GlobalExceptionHandler {
                         InvalidOrderStatusTransitionException exception) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .body(Map.of("error", exception.getMessage()));
+        }
+        @ExceptionHandler(EmailAlreadyRegisteredException.class)
+        public ResponseEntity<Map<String, String>> handleEmailAlreadyRegistered(
+                EmailAlreadyRegisteredException exception) {
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(Map.of("error", exception.getMessage()));
         }
 }
