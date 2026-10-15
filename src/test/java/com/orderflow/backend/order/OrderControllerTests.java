@@ -1,10 +1,11 @@
 
 package com.orderflow.backend.order;
+import com.orderflow.backend.config.JwtService;
 
 import com.orderflow.backend.order.dto.CreateOrderRequest;
 import com.orderflow.backend.order.dto.OrderResponse;
 import com.orderflow.backend.order.dto.UpdateOrderStatusRequest;
-
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -34,6 +35,10 @@ class OrderControllerTests {
     @MockitoBean
     private OrderService orderService;
 
+    @MockitoBean
+    private JwtService jwtService;
+    @MockitoBean
+    private UserDetailsService userDetailsService;
     @Test
     void createOrderReturnsCreatedResponse() throws Exception {
         OrderResponse response = new OrderResponse(

@@ -1,6 +1,5 @@
 package com.orderflow.backend.user;
 
-import static org.mockito.Mockito.when;
 import com.orderflow.backend.user.EmailAlreadyRegisteredException;
 import com.orderflow.backend.user.dto.RegisterRequest;
 import org.junit.jupiter.api.Test;
@@ -11,7 +10,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
-
+import com.orderflow.backend.config.JwtService;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -23,7 +24,11 @@ class UserControllerTests {
     @Autowired
     private MockMvc mockMvc;
 
+    @MockitoBean
+    private JwtService jwtService;
 
+    @MockitoBean
+    private UserDetailsService userDetailsService;
     @MockitoBean
     private UserService userService;
 

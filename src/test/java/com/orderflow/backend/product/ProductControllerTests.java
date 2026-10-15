@@ -1,6 +1,6 @@
 
 package com.orderflow.backend.product;
-
+import com.orderflow.backend.config.JwtService;
 import com.orderflow.backend.product.dto.CreateProductRequest;
 import com.orderflow.backend.product.dto.ProductResponse;
 import com.orderflow.backend.product.dto.UpdateProductRequest;
@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -31,6 +32,11 @@ class ProductControllerTests {
 
     @MockitoBean
     private ProductService productService;
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private UserDetailsService userDetailsService;
 
     @Test
     void getMissingProductReturns404() throws Exception {
