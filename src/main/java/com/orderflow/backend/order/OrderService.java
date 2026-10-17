@@ -8,6 +8,8 @@ import com.orderflow.backend.order.dto.OrderResponse.OrderItemResponse;
 import com.orderflow.backend.product.Product;
 import com.orderflow.backend.product.ProductNotFoundException;
 import com.orderflow.backend.product.ProductRepository;
+import com.orderflow.backend.user.User;
+import com.orderflow.backend.user.UserRepository;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class OrderService {
@@ -23,23 +26,37 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final ProductRepository productRepository;
+    private final UserRepository userRepository;
 
     public OrderService(
             OrderRepository orderRepository,
             OrderItemRepository orderItemRepository,
-            ProductRepository productRepository) {
+            ProductRepository productRepository,
+            UserRepository userRepository) {
+
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.productRepository = productRepository;
+        this.userRepository = userRepository;
     }
 
     @Transactional
-    public OrderResponse createOrder(CreateOrderRequest request) {
+    public OrderResponse createOrder(
+            CreateOrderRequest request,
+            String customerEmail) {
+
+        String normalizedEmail = normalizeEmail(customerEmail);
+
+        User user = userRepository.findByEmail(normalizedEmail)
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "Authenticated user was not found"
+                        ));
 
         List<OrderItem> orderItems = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
 
-        // Validate every item before changing stock.
+        // Validate all items before changing stock.
         for (OrderItemRequest itemRequest : request.getItems()) {
 
             Product product = productRepository.findById(
@@ -47,8 +64,7 @@ public class OrderService {
             ).orElseThrow(() ->
                     new ProductNotFoundException(
                             itemRequest.getProductId()
-                    )
-            );
+                    ));
 
             if (product.getStockQuantity() < itemRequest.getQuantity()) {
                 throw new IllegalArgumentException(
@@ -72,8 +88,9 @@ public class OrderService {
             orderItems.add(item);
         }
 
-        // Create the order.
+        // Associate the order with the authenticated customer.
         Order order = new Order();
+        order.setUser(user);
         order.setStatus(Order.STATUS_PENDING);
         order.setTotalAmount(totalAmount);
         order.setCreatedAt(LocalDateTime.now());
@@ -82,7 +99,6 @@ public class OrderService {
 
         // Reduce stock and associate each item with the order.
         for (OrderItem item : orderItems) {
-
             item.setOrder(savedOrder);
 
             Product product = item.getProduct();
@@ -99,10 +115,12 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public OrderResponse getOrderById(Long id) {
+    public OrderResponse getOrderById(
+            Long id,
+            String customerEmail,
+            boolean admin) {
 
-        Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new OrderNotFoundException(id));
+        Order order = findAccessibleOrder(id, customerEmail, admin);
 
         List<OrderItem> items =
                 orderItemRepository.findAllByOrderId(id);
@@ -111,10 +129,12 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderResponse cancelOrder(Long id) {
+    public OrderResponse cancelOrder(
+            Long id,
+            String customerEmail,
+            boolean admin) {
 
-        Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new OrderNotFoundException(id));
+        Order order = findAccessibleOrder(id, customerEmail, admin);
 
         // Only pending orders can be cancelled.
         if (!Order.STATUS_PENDING.equals(order.getStatus())) {
@@ -138,7 +158,6 @@ public class OrderService {
             productRepository.save(product);
         }
 
-        // Mark the order as cancelled.
         order.setStatus(Order.STATUS_CANCELLED);
         Order savedOrder = orderRepository.save(order);
 
@@ -146,7 +165,9 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderResponse updateOrderStatus(Long id, String newStatus) {
+    public OrderResponse updateOrderStatus(
+            Long id,
+            String newStatus) {
 
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new OrderNotFoundException(id));
@@ -177,6 +198,29 @@ public class OrderService {
                 orderItemRepository.findAllByOrderId(id);
 
         return toResponse(savedOrder, items);
+    }
+
+    private Order findAccessibleOrder(
+            Long id,
+            String customerEmail,
+            boolean admin) {
+
+        if (admin) {
+            return orderRepository.findById(id)
+                    .orElseThrow(() -> new OrderNotFoundException(id));
+        }
+
+        String normalizedEmail = normalizeEmail(customerEmail);
+
+        // A non-admin can only access orders belonging to their account.
+        // Legacy orders without an owner are not accessible to customers.
+        return orderRepository
+                .findByIdAndUser_EmailIgnoreCase(id, normalizedEmail)
+                .orElseThrow(() -> new OrderNotFoundException(id));
+    }
+
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     private OrderResponse toResponse(

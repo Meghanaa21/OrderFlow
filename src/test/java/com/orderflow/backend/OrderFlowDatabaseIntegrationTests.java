@@ -1,8 +1,6 @@
 
 package com.orderflow.backend;
 
-import com.orderflow.backend.user.User;
-import com.orderflow.backend.user.UserRepository;
 import com.orderflow.backend.order.Order;
 import com.orderflow.backend.order.OrderItem;
 import com.orderflow.backend.order.OrderItemRepository;
@@ -12,6 +10,8 @@ import com.orderflow.backend.order.dto.CreateOrderRequest;
 import com.orderflow.backend.order.dto.CreateOrderRequest.OrderItemRequest;
 import com.orderflow.backend.product.Product;
 import com.orderflow.backend.product.ProductRepository;
+import com.orderflow.backend.user.User;
+import com.orderflow.backend.user.UserRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -38,6 +38,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 class OrderFlowDatabaseIntegrationTests {
 
+    private static final String CUSTOMER_EMAIL = "customer@example.com";
+
     static {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
     }
@@ -48,6 +50,7 @@ class OrderFlowDatabaseIntegrationTests {
                     .withDatabaseName("orderflow_test")
                     .withUsername("orderflow_test")
                     .withPassword("test_password");
+
     @Autowired
     JdbcTemplate jdbcTemplate;
 
@@ -76,7 +79,16 @@ class OrderFlowDatabaseIntegrationTests {
     @BeforeEach
     void cleanDatabase() {
         jdbcTemplate.execute(
-                "TRUNCATE TABLE order_items, orders, products RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE order_items, orders, products, users "
+                        + "RESTART IDENTITY CASCADE"
+        );
+
+        userRepository.saveAndFlush(
+                new User(
+                        "Test Customer",
+                        CUSTOMER_EMAIL,
+                        "test-password-hash"
+                )
         );
     }
 
@@ -99,7 +111,7 @@ class OrderFlowDatabaseIntegrationTests {
 
         assertThat(tableCount).isEqualTo(3);
     }
-    
+
     @Test
     void failedOrderItemInsertRollsBackOrderAndStockChanges() {
         Product product = productRepository.saveAndFlush(
@@ -126,13 +138,16 @@ class OrderFlowDatabaseIntegrationTests {
         try {
             assertThatThrownBy(() ->
                     orderService.createOrder(
-                            createOrderRequest(product.getId(), 2)
+                            createOrderRequest(product.getId(), 2),
+                            CUSTOMER_EMAIL
                     )
             ).isInstanceOf(RuntimeException.class);
         } finally {
             jdbcTemplate.execute(
-                    "DROP TRIGGER IF EXISTS reject_test_order_item_trigger ON order_items"
+                    "DROP TRIGGER IF EXISTS "
+                            + "reject_test_order_item_trigger ON order_items"
             );
+
             jdbcTemplate.execute(
                     "DROP FUNCTION IF EXISTS reject_test_order_item()"
             );
@@ -147,7 +162,6 @@ class OrderFlowDatabaseIntegrationTests {
         assertThat(orderRepository.count()).isZero();
         assertThat(orderItemRepository.count()).isZero();
     }
-
 
     @Test
     void productCanBeSavedAndRetrievedFromPostgres() {
@@ -211,19 +225,31 @@ class OrderFlowDatabaseIntegrationTests {
                 2
         );
 
-        var response = orderService.createOrder(request);
+        var response = orderService.createOrder(request, CUSTOMER_EMAIL);
 
         Product updatedProduct = productRepository
                 .findById(product.getId())
                 .orElseThrow();
 
         assertThat(response.getId()).isNotNull();
-    assertThat(response.getStatus()).isEqualTo(Order.STATUS_PENDING);
-    assertThat(response.getTotalAmount())
-            .isEqualByComparingTo("20.00");
+        assertThat(response.getStatus()).isEqualTo(Order.STATUS_PENDING);
+        assertThat(response.getTotalAmount())
+                .isEqualByComparingTo("20.00");
+        assertThat(updatedProduct.getStockQuantity()).isEqualTo(8);
+        assertThat(orderItemRepository.findAllByOrderId(response.getId()))
+                .hasSize(1);
 
-    assertThat(orderItemRepository.findAllByOrderId(response.getId()))
-            .hasSize(1);
+        // Verify ownership directly in PostgreSQL.
+        // This avoids accessing a lazy-loaded User proxy after its session closes.
+        String persistedCustomerEmail = jdbcTemplate.queryForObject(
+                "SELECT u.email FROM orders o "
+                        + "JOIN users u ON u.id = o.user_id "
+                        + "WHERE o.id = ?",
+                String.class,
+                response.getId()
+        );
+
+        assertThat(persistedCustomerEmail).isEqualTo(CUSTOMER_EMAIL);
     }
 
     @Test
@@ -237,7 +263,9 @@ class OrderFlowDatabaseIntegrationTests {
                 2
         );
 
-        assertThatThrownBy(() -> orderService.createOrder(request))
+        assertThatThrownBy(() ->
+                orderService.createOrder(request, CUSTOMER_EMAIL)
+        )
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Insufficient stock");
 
@@ -257,21 +285,35 @@ class OrderFlowDatabaseIntegrationTests {
         );
 
         var createdOrder = orderService.createOrder(
-                createOrderRequest(product.getId(), 3)
+                createOrderRequest(product.getId(), 3),
+                CUSTOMER_EMAIL
         );
 
-        assertThat(productRepository.findById(product.getId())
-                .orElseThrow().getStockQuantity()).isEqualTo(7);
+        assertThat(
+                productRepository.findById(product.getId())
+                        .orElseThrow()
+                        .getStockQuantity()
+        ).isEqualTo(7);
 
-        orderService.cancelOrder(createdOrder.getId());
+        orderService.cancelOrder(
+                createdOrder.getId(),
+                CUSTOMER_EMAIL,
+                false
+        );
 
         Product restoredProduct = productRepository
                 .findById(product.getId())
                 .orElseThrow();
 
         assertThat(restoredProduct.getStockQuantity()).isEqualTo(10);
-        assertThat(orderService.getOrderById(createdOrder.getId()).getStatus())
-        .isEqualTo(Order.STATUS_CANCELLED);
+
+        assertThat(
+                orderService.getOrderById(
+                        createdOrder.getId(),
+                        CUSTOMER_EMAIL,
+                        false
+                ).getStatus()
+        ).isEqualTo(Order.STATUS_CANCELLED);
     }
 
     private Product createProduct(
@@ -284,6 +326,7 @@ class OrderFlowDatabaseIntegrationTests {
         product.setDescription("Created for integration testing");
         product.setPrice(new BigDecimal(price));
         product.setStockQuantity(stockQuantity);
+
         return product;
     }
 
@@ -297,36 +340,46 @@ class OrderFlowDatabaseIntegrationTests {
 
         CreateOrderRequest request = new CreateOrderRequest();
         request.setItems(List.of(item));
+
         return request;
     }
+
     @Test
-void userCanBeSavedAndRetrievedFromPostgres() {
-    User user = new User(
-        "Test Customer",
-        "customer@example.com",
-        "test-password-hash"
-    );
+    void userCanBeSavedAndRetrievedFromPostgres() {
+        User user = new User(
+                "Another Customer",
+                "another@example.com",
+                "test-password-hash"
+        );
 
-    User savedUser = userRepository.saveAndFlush(user);
+        User savedUser = userRepository.saveAndFlush(user);
 
-    assertThat(savedUser.getId()).isNotNull();
-    assertThat(userRepository.findByEmail("customer@example.com"))
-        .isPresent()
-        .get()
-        .extracting(User::getName)
-        .isEqualTo("Test Customer");
-}
+        assertThat(savedUser.getId()).isNotNull();
+        assertThat(userRepository.findByEmail("another@example.com"))
+                .isPresent()
+                .get()
+                .extracting(User::getName)
+                .isEqualTo("Another Customer");
+    }
 
     @Test
     void duplicateUserEmailIsRejectedByPostgres() {
         userRepository.saveAndFlush(
-            new User("Customer One", "duplicate@example.com", "hash-one")
+                new User(
+                        "Customer One",
+                        "duplicate@example.com",
+                        "hash-one"
+                )
         );
 
         assertThatThrownBy(() ->
-            userRepository.saveAndFlush(
-                new User("Customer Two", "duplicate@example.com", "hash-two")
-            )
+                userRepository.saveAndFlush(
+                        new User(
+                                "Customer Two",
+                                "duplicate@example.com",
+                                "hash-two"
+                        )
+                )
         ).isInstanceOf(RuntimeException.class);
     }
 }
