@@ -26,7 +26,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-
+import org.springframework.data.domain.Page;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -315,6 +315,116 @@ class OrderFlowDatabaseIntegrationTests {
                 ).getStatus()
         ).isEqualTo(Order.STATUS_CANCELLED);
     }
+    
+        @Test
+        void customerSeesOnlyTheirOwnOrdersInDatabasePagination() {
+        User anotherCustomer = userRepository.saveAndFlush(
+                new User(
+                        "Another Customer",
+                        "another@example.com",
+                        "test-password-hash"
+                )
+        );
+
+        Order firstOrder = createTestOrder(
+                userRepository.findByEmail(CUSTOMER_EMAIL).orElseThrow(),
+                "10.00",
+                LocalDateTime.of(2026, 1, 1, 10, 0)
+        );
+
+        Order secondOrder = createTestOrder(
+                anotherCustomer,
+                "20.00",
+                LocalDateTime.of(2026, 1, 2, 10, 0)
+        );
+
+        Page<com.orderflow.backend.order.dto.OrderResponse> result =
+                orderService.getOrders(CUSTOMER_EMAIL, false, 0, 10);
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent())
+                .extracting(com.orderflow.backend.order.dto.OrderResponse::getId)
+                .containsExactly(firstOrder.getId())
+                .doesNotContain(secondOrder.getId());
+        }
+
+        @Test
+        void adminCanSeeOrdersFromMultipleCustomers() {
+        User firstCustomer = userRepository.findByEmail(CUSTOMER_EMAIL)
+                .orElseThrow();
+
+        User secondCustomer = userRepository.saveAndFlush(
+                new User(
+                        "Another Customer",
+                        "another@example.com",
+                        "test-password-hash"
+                )
+        );
+
+        createTestOrder(
+                firstCustomer,
+                "10.00",
+                LocalDateTime.of(2026, 1, 1, 10, 0)
+        );
+
+        createTestOrder(
+                secondCustomer,
+                "20.00",
+                LocalDateTime.of(2026, 1, 2, 10, 0)
+        );
+
+        Page<com.orderflow.backend.order.dto.OrderResponse> result =
+                orderService.getOrders("admin@example.com", true, 0, 10);
+
+        assertThat(result.getTotalElements()).isEqualTo(2);
+        }
+
+        @Test
+        void orderPaginationReturnsCorrectPageAndTotalCount() {
+        User customer = userRepository.findByEmail(CUSTOMER_EMAIL)
+                .orElseThrow();
+
+        createTestOrder(
+                customer,
+                "10.00",
+                LocalDateTime.of(2026, 1, 1, 10, 0)
+        );
+
+        createTestOrder(
+                customer,
+                "20.00",
+                LocalDateTime.of(2026, 1, 2, 10, 0)
+        );
+
+        createTestOrder(
+                customer,
+                "30.00",
+                LocalDateTime.of(2026, 1, 3, 10, 0)
+        );
+
+        Page<com.orderflow.backend.order.dto.OrderResponse> result =
+                orderService.getOrders(CUSTOMER_EMAIL, false, 0, 2);
+
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getTotalElements()).isEqualTo(3);
+        assertThat(result.getTotalPages()).isEqualTo(2);
+        assertThat(result.isFirst()).isTrue();
+        assertThat(result.isLast()).isFalse();
+        }
+
+        private Order createTestOrder(
+                User user,
+                String amount,
+                LocalDateTime createdAt) {
+
+        Order order = new Order();
+        order.setUser(user);
+        order.setStatus(Order.STATUS_PENDING);
+        order.setTotalAmount(new BigDecimal(amount));
+        order.setCreatedAt(createdAt);
+
+        return orderRepository.saveAndFlush(order);
+        }
 
     private Product createProduct(
             String name,

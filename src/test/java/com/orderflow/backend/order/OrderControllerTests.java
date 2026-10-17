@@ -42,6 +42,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 @WebMvcTest(OrderController.class)
 @Import(OrderControllerTests.MvcTestConfig.class)
@@ -102,6 +106,74 @@ class OrderControllerTests {
                         .content("{\"items\":[]}"))
                 .andExpect(status().isBadRequest());
     }
+    
+        @Test
+        void getOrdersReturnsPaginatedResultsForCustomer() throws Exception {
+        OrderResponse response = new OrderResponse(
+                1L,
+                "PENDING",
+                new BigDecimal("20.00"),
+                LocalDateTime.now(),
+                List.of()
+        );
+
+        Page<OrderResponse> page = new PageImpl<>(
+                List.of(response),
+                PageRequest.of(0, 10),
+                1
+        );
+
+        when(orderService.getOrders(CUSTOMER_EMAIL, false, 0, 10))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/orders")
+                        .with(testPrincipal(CUSTOMER_EMAIL, "ROLE_CUSTOMER"))
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(1))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
+
+        verify(orderService).getOrders(CUSTOMER_EMAIL, false, 0, 10);
+        }
+
+        @Test
+        void getOrdersAllowsAdminToListAllOrders() throws Exception {
+        Page<OrderResponse> page = new PageImpl<>(
+                List.of(),
+                PageRequest.of(0, 10),
+                0
+        );
+
+        when(orderService.getOrders(ADMIN_EMAIL, true, 0, 10))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/orders")
+                        .with(testPrincipal(ADMIN_EMAIL, "ROLE_ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        verify(orderService).getOrders(ADMIN_EMAIL, true, 0, 10);
+        }
+
+        @Test
+        void getOrdersRejectsNegativePage() throws Exception {
+        mockMvc.perform(get("/api/orders")
+                        .with(testPrincipal(CUSTOMER_EMAIL, "ROLE_CUSTOMER"))
+                        .param("page", "-1"))
+                .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        void getOrdersRejectsPageSizeAboveLimit() throws Exception {
+        mockMvc.perform(get("/api/orders")
+                        .with(testPrincipal(CUSTOMER_EMAIL, "ROLE_CUSTOMER"))
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest());
+        }
+
 
     // Helper method to inject the mock user into the request
     private RequestPostProcessor testPrincipal(String username, String role) {

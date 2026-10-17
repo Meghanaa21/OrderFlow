@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.data.domain.Page;
+import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -36,7 +38,26 @@ public class OrderController {
             @AuthenticationPrincipal UserDetails principal) {
         return orderService.createOrder(request, principal.getUsername());
     }
+    @GetMapping
+    public Page<OrderResponse> getOrders(
+            @AuthenticationPrincipal UserDetails principal,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
 
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Page must be non-negative and size must be between 1 and 100"
+            );
+        }
+
+        return orderService.getOrders(
+                principal.getUsername(),
+                isAdmin(principal),
+                page,
+                size
+        );
+    }
     @GetMapping("/{id}")
     public OrderResponse getOrderById(
             @PathVariable Long id,

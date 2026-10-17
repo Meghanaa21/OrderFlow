@@ -10,7 +10,10 @@ import com.orderflow.backend.product.ProductNotFoundException;
 import com.orderflow.backend.product.ProductRepository;
 import com.orderflow.backend.user.User;
 import com.orderflow.backend.user.UserRepository;
-
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -113,7 +116,52 @@ public class OrderService {
 
         return toResponse(savedOrder, orderItems);
     }
+    @Transactional(readOnly = true)
+        public Page<OrderResponse> getOrders(
+                String customerEmail,
+                boolean admin,
+                int page,
+                int size) {
 
+        if (page < 0) {
+                throw new IllegalArgumentException(
+                        "Page number cannot be negative"
+                );
+        }
+
+        if (size < 1 || size > 100) {
+                throw new IllegalArgumentException(
+                        "Page size must be between 1 and 100"
+                );
+        }
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+                        .and(Sort.by(Sort.Direction.DESC, "id"))
+        );
+
+        Page<Order> orders;
+
+        if (admin) {
+                orders = orderRepository.findAll(pageable);
+        } else {
+                String normalizedEmail = normalizeEmail(customerEmail);
+
+                orders = orderRepository.findAllByUser_EmailIgnoreCase(
+                        normalizedEmail,
+                        pageable
+                );
+        }
+
+        return orders.map(order -> {
+                List<OrderItem> items =
+                        orderItemRepository.findAllByOrderId(order.getId());
+
+                return toResponse(order, items);
+        });
+}
     @Transactional(readOnly = true)
     public OrderResponse getOrderById(
             Long id,
