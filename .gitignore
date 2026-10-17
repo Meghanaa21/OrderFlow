@@ -43,3 +43,5 @@ application-local.properties
 
 # Build output
 target/
+
+order-controller-test.log
